@@ -8,10 +8,8 @@
   <a href="https://github.com/abirxdhack/SmartDlBot/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/abirxdhack/SmartDlBot"></a>
   <a href="https://github.com/abirxdhack/SmartDlBot/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/abirxdhack/SmartDlBot"></a>
   <a href="https://github.com/abirxdhack/SmartDlBot/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/abirxdhack/SmartDlBot"></a>
-  <a href="https://github.com/abirxdhack/SmartDlBot/blob/main/LICENSE"><img alt="GitHub license" src="https://img.shields.io/github/license/abirxdhack/SmartDlBot"></a>
   <a href="https://github.com/abirxdhack/SmartDlBot/pulls"><img alt="GitHub pull requests" src="https://img.shields.io/github/issues-pr/abirxdhack/SmartDlBot"></a>
   <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/pyrogram">
-  <img alt="GitHub top language" src="https://img.shields.io/github/languages/top/abirxdhack/SmartDlBot">
 </p>
 
 <hr>
