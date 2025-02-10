@@ -54,7 +54,7 @@ To avoid errors related to YouTube sign-in requirements, using a cookie file is 
    - It's recommended to create a new Chrome profile for managing your bot's cookies.
 
 2. **Install a Cookie Management Extension:**
-   - Use "Cookie Editor" or similar extensions to manage your cookies.
+   - Use [Cookie Editor](https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm) or similar extensions to manage your cookies.
 
 3. **Export Cookies from YouTube:**
    - Log into YouTube in your new browser profile and export cookies in Netscape format via the cookie extension.
