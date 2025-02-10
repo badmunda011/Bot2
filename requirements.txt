@@ -1,0 +1,8 @@
+pyrogram
+yt-dlp
+spotipy
+requests
+pillow
+asyncio
+aiofiles
+aiohttp
