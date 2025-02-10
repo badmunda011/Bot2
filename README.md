@@ -60,7 +60,7 @@ To avoid errors related to YouTube sign-in requirements, using a cookie file is 
    - Log into YouTube in your new browser profile and export cookies in Netscape format via the cookie extension.
 
 4. **Save the Cookies File:**
-   - Update your `cookies.txt` in the `TelecastBot/ytcookies` directory of your project.
+   - Update your `cookies.txt` in the `SmartDlBot/cookies` directory of your project.
 
 ### Managing Cookies:
 
@@ -102,7 +102,7 @@ Download videos and tracks from popular platforms using these commands:
 
 ➢ **`/pin [Video URL]`** - Download a Pinterest video.
    - Example: **/pin https://pin.it/6GoDMRwmE** **`Downloads the specified Pinterest video`**
-   - Note: 18+ Instagram Reels cannot be downloaded.
+
 
 ➢ **`/sp [Track URL]`** - Download a Spotify track.
    - Example: **/sp https://open.spotify.com/track/7ouBSPZKQpm7zQz2leJXta** **`Downloads the specified Spotify track**`
