@@ -132,7 +132,7 @@ Download videos and tracks from popular platforms using these commands:
 ➢ **`.song [Video URL]`** - Download a YouTube video as an MP3 file.
    - Example: **.song https://youtu.be/In8bfGnXavw** **`Converts and downloads the video as MP3`**
 
-##NOTE
+## NOTE
 **Provide a valid public URL for each platform to download successfully**
 For inquiries or feedback, please feel free to reach out via Telegram.
 
