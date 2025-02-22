@@ -15,7 +15,7 @@ import requests
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 
-YT_COOKIES_PATH = "./cookies/cookies.txt"
+YT_COOKIES_PATH = "./cookies/ItsSmartToolBot.txt"
 
 # Configure logging
 logging.basicConfig(
@@ -276,18 +276,30 @@ def prepare_thumbnail_sync(thumbnail_url: str, output_path: str) -> str:
     return None
 
 async def handle_download_request(client, message, url):
-    search_message = await message.reply_text("`Searching the video...`", parse_mode=ParseMode.MARKDOWN)
+    search_message = await client.send_message(
+        chat_id=message.chat.id,
+        text="`Searching the video...`",
+        parse_mode=ParseMode.MARKDOWN
+    )
 
     try:
         loop = asyncio.get_event_loop()
         result, error = await loop.run_in_executor(executor, download_video_sync, url)
         if error:
             await search_message.delete()
-            await message.reply_text(f"**An Error Occurred During Download**\n\n❌ {error}", parse_mode=ParseMode.MARKDOWN)
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=f"**An Error Occurred During Download❌**",
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
 
         await search_message.delete()
-        downloading_message = await message.reply_text("`Found ☑️ Downloading...`", parse_mode=ParseMode.MARKDOWN)
+        downloading_message = await client.send_message(
+            chat_id=message.chat.id,
+            text="`Found ☑️ Downloading...`",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
         video_path = result['file_path']
         title = result['title']
@@ -338,27 +350,50 @@ async def handle_download_request(client, message, url):
 
     except Exception as e:
         await search_message.delete()
-        await message.reply_text(f"**An Error Occurred During Download**\n\n❌ {str(e)}", parse_mode=ParseMode.MARKDOWN)
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"**An Error Occurred During Download❌**",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 async def handle_audio_request(client, message):
     query = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
 
     if not query:
-        await message.reply_text("**Please provide a Music Link ❌**", parse_mode=ParseMode.MARKDOWN)
+        await client.send_message(
+            chat_id=message.chat.id,
+            text="**Please provide a Music Name Or Link❌**",
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
 
-    status_message = await message.reply_text("`Searching the audio...`", parse_mode=ParseMode.MARKDOWN)
+    status_message = await client.send_message(
+        chat_id=message.chat.id,
+        text="`Searching the audio...`",
+        parse_mode=ParseMode.MARKDOWN
+    )
 
     if not validate_url(query):
         await status_message.delete()
-        searching_message = await message.reply_text("`Searching for the song...`", parse_mode=ParseMode.MARKDOWN)
+        searching_message = await client.send_message(
+            chat_id=message.chat.id,
+            text="`Searching for the song...`",
+            parse_mode=ParseMode.MARKDOWN
+        )
         video_url = await search_youtube(query)
         if not video_url:
             await searching_message.delete()
-            await message.reply_text("❌ No matching videos found. Please try a different search term.")
+            await client.send_message(
+                chat_id=message.chat.id,
+                text="❌ No matching audios found"
+            )
             return
         await searching_message.delete()
-        status_message = await message.reply_text("`Found the video! Starting download...`", parse_mode=ParseMode.MARKDOWN)
+        status_message = await client.send_message(
+            chat_id=message.chat.id,
+            text="`Found the video! Starting download...`",
+            parse_mode=ParseMode.MARKDOWN
+        )
     else:
         video_url = query
 
@@ -366,7 +401,11 @@ async def handle_audio_request(client, message):
     result, error = await loop.run_in_executor(executor, download_audio_sync, video_url)
     if error:
         await status_message.delete()
-        await message.reply_text(f"**An Error Occurred During Download**\n\n❌ {error}", parse_mode=ParseMode.MARKDOWN)
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"**An Error Occurred During Download❌**",
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
 
     audio_path = result['file_path']
@@ -412,38 +451,75 @@ async def handle_audio_request(client, message):
         await status_message.delete()
     except Exception as e:
         await status_message.delete()
-        await message.reply_text(f"**An Error Occurred During Download**\n\n❌ {str(e)}")
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"**An Error Occurred During Download❌**"
+        )
         if os.path.exists(audio_path):
             os.remove(audio_path)
 
 def setup_downloader_handler(app: Client):
-    @app.on_message(filters.regex(r"^[/.](yt|video)(\s+https?://\S+)?$"))
+    @app.on_message(filters.regex(r"^[/.](yt|video)(\s+.+)?$"))
     async def video_command(client, message):
         command_parts = message.text.split(maxsplit=1)
-        if len(command_parts) == 1:
-            await message.reply_text("**Please provide your video link ❌**", parse_mode=ParseMode.MARKDOWN)
+        if len(command_parts) == 1 or not command_parts[1]:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text="**Please provide your video name or link❌**",
+                parse_mode=ParseMode.MARKDOWN
+            )
         else:
-            url = command_parts[1]
-            if not validate_url(url):
-                await message.reply_text("**Invalid YouTube URL ❌**", parse_mode=ParseMode.MARKDOWN)
+            url_or_query = command_parts[1]
+            if validate_url(url_or_query):
+                await handle_download_request(client, message, url_or_query)
             else:
-                await handle_download_request(client, message, url)
+                searching_message = await client.send_message(
+                    chat_id=message.chat.id,
+                    text="`Searching for the video...`",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                video_url = await search_youtube(url_or_query)
+                await searching_message.delete()
+                if not video_url:
+                    await client.send_message(
+                        chat_id=message.chat.id,
+                        text="❌ No matching videos found"
+                    )
+                else:
+                    await handle_download_request(client, message, video_url)
 
-    @app.on_message(filters.regex(r"^[/.]song(\s+https?://\S+)?$"))
+    @app.on_message(filters.regex(r"^[/.]song(\s+.+)?$"))
     async def song_command(client, message):
         command_parts = message.text.split(maxsplit=1)
-        if len(command_parts) == 1:
-            await message.reply_text("**Please provide a Music Link ❌**", parse_mode=ParseMode.MARKDOWN)
+        if len(command_parts) == 1 or not command_parts[1]:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text="**Please provide a Music Name Or Link❌**",
+                parse_mode=ParseMode.MARKDOWN
+            )
         else:
-            url = command_parts[1]
-            if not validate_url(url):
-                await message.reply_text("**Invalid YouTube URL ❌**", parse_mode=ParseMode.MARKDOWN)
-            else:
+            url_or_query = command_parts[1]
+            if validate_url(url_or_query):
                 await handle_audio_request(client, message)
+            else:
+                searching_message = await client.send_message(
+                    chat_id=message.chat.id,
+                    text="`Searching for the song...`",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                video_url = await search_youtube(url_or_query)
+                await searching_message.delete()
+                if not video_url:
+                    await client.send_message(
+                        chat_id=message.chat.id,
+                        text="❌ No matching audios found"
+                    )
+                else:
+                    await handle_audio_request(client, message)
 
 async def search_youtube(query: str) -> Optional[str]:
     """
-    Search YouTube for the first audio result matching the query.
+    Search YouTube for the first video result matching the query.
     """
     ydl_opts = {
         'format': 'bestaudio/best',
