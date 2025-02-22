@@ -6,3 +6,4 @@ pillow
 asyncio
 aiofiles
 aiohttp
+youtube-search-python
