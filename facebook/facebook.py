@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 import yt_dlp
@@ -8,6 +9,7 @@ import aiofiles
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
+
 
 # Configure logging
 logging.basicConfig(
@@ -44,6 +46,8 @@ class FacebookDownloader:
             'no_color': True,
             'simulate': False,
             'nooverwrites': True,
+            'noprogress': True,
+            'concurrent_fragment_downloads': 10,  # Increase concurrency
         }
 
         try:
@@ -77,16 +81,24 @@ def setup_dl_handlers(app: Client):
     async def fb_handler(client: Client, message: Message):
         command_parts = message.text.split(maxsplit=1)
         if len(command_parts) < 2:
-            await message.reply_text("**Please provide a Facebook video URL after the command.**", parse_mode=ParseMode.MARKDOWN)
+            await client.send_message(
+                chat_id=message.chat.id,
+                text="**Please provide a Facebook link ❌**",
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
         
         url = command_parts[1]
-        downloading_message = await message.reply_text("`Searching The Video`", parse_mode=ParseMode.MARKDOWN)
+        downloading_message = await client.send_message(
+            chat_id=message.chat.id,
+            text="`Searching The Video`",
+            parse_mode=ParseMode.MARKDOWN
+        )
         
         try:
             video_info = await fb_downloader.download_video(url)
             if video_info:
-                await downloading_message.edit_text("`Downloading Your Video ...`", parse_mode=ParseMode.MARKDOWN)
+                await downloading_message.edit_text("**Found ☑️ Downloading...**", parse_mode=ParseMode.MARKDOWN)
                 
                 title = video_info['title']
                 filename = video_info['filename']
@@ -108,21 +120,60 @@ def setup_dl_handlers(app: Client):
                 duration_seconds = int(duration % 60)
                 
                 caption = (
-                    f"🎵 **Title**: `{title}`\n"
+                    f"🎵 **Title**: **{title}**\n"
                     f"━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"👁️‍🗨️ **Views**: `{views} views`\n"
+                    f"👁️‍🗨️ **Views**: **{views} views**\n"
                     f"🔗 **Url**: [Watch On Facebook]({webpage_url})\n"
-                    f"⏱️ **Duration**: `{duration_minutes}:{duration_seconds:02d}`\n"
+                    f"⏱️ **Duration**: **{duration_minutes}:{duration_seconds:02d}**\n"
                     f"━━━━━━━━━━━━━━━━━━━━━\n"
                     f"**Downloaded By**: {user_info}"
                 )
                 
-                await message.reply_video(video=filename, supports_streaming=True, caption=caption, parse_mode=ParseMode.MARKDOWN)
+                async with aiofiles.open(filename, 'rb') as video_file:
+                    start_time = time.time()
+                    last_update_time = [start_time]
+                    await client.send_video(
+                        chat_id=message.chat.id,
+                        video=filename,
+                        supports_streaming=True,
+                        caption=caption,
+                        parse_mode=ParseMode.MARKDOWN,
+                        progress=progress_bar,
+                        progress_args=(downloading_message, start_time, last_update_time)
+                    )
                 
                 await downloading_message.delete()
                 os.remove(filename)
             else:
-                await downloading_message.edit_text("Could not download the video.")
+                await downloading_message.edit_text("Download Error ❌")
         except Exception as e:
             logger.error(f"Error downloading Facebook video: {e}")
-            await downloading_message.edit_text("An error occurred while processing your request.")
+            await downloading_message.edit_text("An error occurred❌")
+
+async def progress_bar(current, total, status_message, start_time, last_update_time):
+    """
+    Display a progress bar for uploads.
+    """
+    elapsed_time = time.time() - start_time
+    percentage = (current / total) * 100
+    progress = "▓" * int(percentage // 5) + "░" * (20 - int(percentage // 5))
+    speed = current / elapsed_time / 1024 / 1024  # Speed in MB/s
+    uploaded = current / 1024 / 1024  # Uploaded size in MB
+    total_size = total / 1024 / 1024  # Total size in MB
+
+    # Throttle updates: Only update if at least 1 second has passed since the last update
+    if time.time() - last_update_time[0] < 1:
+        return
+    last_update_time[0] = time.time()  # Update the last update time
+
+    text = (
+        f"📥 Upload Progress 📥\n\n"
+        f"{progress}\n\n"
+        f"🚧 Percentage: {percentage:.2f}%\n"
+        f"⚡️ Speed: {speed:.2f} MB/s\n"
+        f"📶 Uploaded: {uploaded:.2f} MB of {total_size:.2f} MB"
+    )
+    try:
+        await status_message.edit(text)
+    except Exception as e:
+        print(f"Error updating progress: {e}")
