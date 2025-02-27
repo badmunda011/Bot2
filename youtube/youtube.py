@@ -96,11 +96,11 @@ async def progress_bar(current, total, status_message, start_time, last_update_t
     last_update_time[0] = time.time()  # Update the last update time
 
     text = (
-        f"📥 Upload Progress 📥\n\n"
+        f"**📥 Upload Progress 📥**\n\n"
         f"{progress}\n\n"
-        f"🚧 Percentage: {percentage:.2f}%\n"
-        f"⚡️ Speed: {speed:.2f} MB/s\n"
-        f"📶 Uploaded: {uploaded:.2f} MB of {total_size:.2f} MB"
+        f"**🚧 Percentage:** {percentage:.2f}%\n"
+        f"**⚡️ Speed:** {speed:.2f} MB/s\n"
+        f"**📶 Uploaded:** {uploaded:.2f} MB of {total_size:.2f} MB"
     )
     try:
         await status_message.edit(text)
@@ -112,7 +112,7 @@ def get_ydl_opts(output_filename: str) -> dict:
     Return yt-dlp options.
     """
     return {
-        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        'format': 'bestvideo[height<=720][width=1280][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
         'outtmpl': output_filename,
         'cookiefile': YT_COOKIES_PATH,
         'quiet': True,
@@ -195,7 +195,7 @@ def download_video_sync(url: str) -> tuple:
     except yt_dlp.utils.DownloadError:
         return None, "Download failed: Video unavailable or restricted"
     except Exception as e:
-        return None, f"An unexpected error occurred: {str(e)}"
+        return None, f"An unexpected error occurred: {e}"
 
 def download_audio_sync(url: str) -> tuple:
     """
@@ -248,9 +248,9 @@ def download_audio_sync(url: str) -> tuple:
         }, None
 
     except yt_dlp.utils.DownloadError as e:
-        return None, f"Download failed: {str(e)}"
+        return None, f"Download failed: {e}"
     except Exception as e:
-        return None, f"An unexpected error occurred: {str(e)}"
+        return None, f"An unexpected error occurred: {e}"
 
 def prepare_thumbnail_sync(thumbnail_url: str, output_path: str) -> str:
     """
@@ -275,29 +275,60 @@ def prepare_thumbnail_sync(thumbnail_url: str, output_path: str) -> str:
         print(f"Error preparing thumbnail: {e}")
     return None
 
-async def handle_download_request(client, message, url):
+async def search_youtube(query: str) -> Optional[str]:
+    """
+    Search YouTube for the first video result matching the query.
+    """
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'default_search': 'ytsearch1:',
+        'nooverwrites': True,
+        'cookiefile': YT_COOKIES_PATH,
+        'no_warnings': True,
+        'quiet': True,
+        'no_color': True,
+        'simulate': True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = await asyncio.get_event_loop().run_in_executor(executor, ydl.extract_info, query, False)
+            if 'entries' in info and info['entries']:
+                return info['entries'][0]['webpage_url']
+    except Exception as e:
+        print(f"YouTube search error: {e}")
+
+    return None
+
+async def handle_download_request(client, message, query):
     search_message = await client.send_message(
         chat_id=message.chat.id,
-        text="`Searching the video...`",
+        text="**⚡️Searching for the video...**",
         parse_mode=ParseMode.MARKDOWN
     )
 
+    if not validate_url(query):
+        video_url = await search_youtube(query)
+        if not video_url:
+            await search_message.edit_text(
+                text="**❌ No matching videos found**"
+            )
+            return
+    else:
+        video_url = query
+
     try:
         loop = asyncio.get_event_loop()
-        result, error = await loop.run_in_executor(executor, download_video_sync, url)
+        result, error = await loop.run_in_executor(executor, download_video_sync, video_url)
         if error:
-            await search_message.delete()
-            await client.send_message(
-                chat_id=message.chat.id,
+            await search_message.edit(
                 text=f"**An Error Occurred During Download❌**",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
 
-        await search_message.delete()
-        downloading_message = await client.send_message(
-            chat_id=message.chat.id,
-            text="`Found ☑️ Downloading...`",
+        await search_message.edit(
+            text="**Found ☑️ Downloading...**",
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -310,20 +341,20 @@ async def handle_download_request(client, message, url):
 
         if message.from_user:
             user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
-            user_info = f"Downloaded By: [{user_full_name}](tg://user?id={message.from_user.id})"
+            user_info = f"[{user_full_name}](tg://user?id={message.from_user.id})"
         else:
             group_name = message.chat.title or "this group"
             group_url = f"https://t.me/{message.chat.username}" if message.chat.username else "this group"
-            user_info = f"Downloaded By: [{group_name}]({group_url})"
+            user_info = f"[{group_name}]({group_url})"
 
         video_caption = (
-            f"🎵 **Title:** `{title}`\n"
+            f"🎵 **Title:** **{title}**\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
             f"👁️‍🗨️ **Views:** **{views}** views\n"
-            f"🔗 [Watch On YouTube]({url})\n"
+            f"🔗 [Watch On YouTube]({video_url})\n"
             f"⏱️ **Duration:** **{duration}**\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"{user_info}"
+            f"⚡️ **Downloaded By** {user_info}"
         )
 
         last_update_time = [0]
@@ -337,10 +368,8 @@ async def handle_download_request(client, message, url):
             supports_streaming=True,
             thumb=thumbnail_path,
             progress=progress_bar,
-            progress_args=(downloading_message, start_time, last_update_time)
+            progress_args=(search_message, start_time, last_update_time)
         )
-
-        await downloading_message.delete()
 
         # Cleanup
         if os.path.exists(video_path):
@@ -348,91 +377,70 @@ async def handle_download_request(client, message, url):
         if thumbnail_path and os.path.exists(thumbnail_path):
             os.remove(thumbnail_path)
 
-    except Exception as e:
         await search_message.delete()
-        await client.send_message(
-            chat_id=message.chat.id,
+
+    except Exception as e:
+        await search_message.edit(
             text=f"**An Error Occurred During Download❌**",
             parse_mode=ParseMode.MARKDOWN
         )
 
-async def handle_audio_request(client, message):
-    query = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
-
-    if not query:
-        await client.send_message(
-            chat_id=message.chat.id,
-            text="**Please provide a Music Name Or Link❌**",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        return
-
+async def handle_audio_request(client, message, query):
     status_message = await client.send_message(
         chat_id=message.chat.id,
-        text="`Searching the audio...`",
+        text="**⚡️Searching for the song...**",
         parse_mode=ParseMode.MARKDOWN
     )
 
     if not validate_url(query):
-        await status_message.delete()
-        searching_message = await client.send_message(
-            chat_id=message.chat.id,
-            text="`Searching for the song...`",
-            parse_mode=ParseMode.MARKDOWN
-        )
         video_url = await search_youtube(query)
         if not video_url:
-            await searching_message.delete()
-            await client.send_message(
-                chat_id=message.chat.id,
-                text="❌ No matching audios found"
+            await status_message.edit_text(
+                text="**❌ No matching audios found**"
             )
             return
-        await searching_message.delete()
-        status_message = await client.send_message(
-            chat_id=message.chat.id,
-            text="`Found the video! Starting download...`",
-            parse_mode=ParseMode.MARKDOWN
-        )
     else:
         video_url = query
 
-    loop = asyncio.get_event_loop()
-    result, error = await loop.run_in_executor(executor, download_audio_sync, video_url)
-    if error:
-        await status_message.delete()
-        await client.send_message(
-            chat_id=message.chat.id,
-            text=f"**An Error Occurred During Download❌**",
+    try:
+        loop = asyncio.get_event_loop()
+        result, error = await loop.run_in_executor(executor, download_audio_sync, video_url)
+        if error:
+            await status_message.edit(
+                text=f"**An Error Occurred During Download❌**",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        await status_message.edit(
+            text="**Found ☑️ Downloading...**",
             parse_mode=ParseMode.MARKDOWN
         )
-        return
 
-    audio_path = result['file_path']
-    title = result['title']
-    views = result['views']
-    duration = result['duration']
-    file_size = result['file_size']
+        audio_path = result['file_path']
+        title = result['title']
+        views = result['views']
+        duration = result['duration']
+        file_size = result['file_size']
 
-    if message.from_user:
-        user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
-        user_info = f"Downloaded By: [{user_full_name}](tg://user?id={message.from_user.id})"
-    else:
-        group_name = message.chat.title or "this group"
-        group_url = f"https://t.me/{message.chat.username}" if message.chat.username else "this group"
-        user_info = f"Downloaded By: [{group_name}]({group_url})"
+        if message.from_user:
+            user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
+            user_info = f"[{user_full_name}](tg://user?id={message.from_user.id})"
+        else:
+            group_name = message.chat.title or "this group"
+            group_url = f"https://t.me/{message.chat.username}" if message.chat.username else "this group"
+            user_info = f"[{group_name}]({group_url})"
 
-    audio_caption = (
-        f"🎵 **Title:** `{title}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👁️‍🗨️ **Views:** **{views}** views\n"
-        f"🔗 [Listen On YouTube]({video_url})\n"
-        f"⏱️ **Duration:** **{duration}**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"{user_info}"
-    )
+        audio_caption = (
+            f"🎵 **Title:** **{title}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👁️‍🗨️ **Views:** **{views}** views\n"
+            f"🔗 [Listen On YouTube]({video_url})\n"
+            f"⏱️ **Duration:** **{duration}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚡️ **Downloaded By** {user_info}"
+        )
 
-    try:
         last_update_time = [0]
         start_time = time.time()
 
@@ -450,9 +458,7 @@ async def handle_audio_request(client, message):
         os.remove(audio_path)
         await status_message.delete()
     except Exception as e:
-        await status_message.delete()
-        await client.send_message(
-            chat_id=message.chat.id,
+        await status_message.edit_text(
             text=f"**An Error Occurred During Download❌**"
         )
         if os.path.exists(audio_path):
@@ -470,23 +476,7 @@ def setup_downloader_handler(app: Client):
             )
         else:
             url_or_query = command_parts[1]
-            if validate_url(url_or_query):
-                await handle_download_request(client, message, url_or_query)
-            else:
-                searching_message = await client.send_message(
-                    chat_id=message.chat.id,
-                    text="`Searching for the video...`",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                video_url = await search_youtube(url_or_query)
-                await searching_message.delete()
-                if not video_url:
-                    await client.send_message(
-                        chat_id=message.chat.id,
-                        text="❌ No matching videos found"
-                    )
-                else:
-                    await handle_download_request(client, message, video_url)
+            await handle_download_request(client, message, url_or_query)
 
     @app.on_message(filters.regex(r"^[/.]song(\s+.+)?$"))
     async def song_command(client, message):
@@ -499,45 +489,4 @@ def setup_downloader_handler(app: Client):
             )
         else:
             url_or_query = command_parts[1]
-            if validate_url(url_or_query):
-                await handle_audio_request(client, message)
-            else:
-                searching_message = await client.send_message(
-                    chat_id=message.chat.id,
-                    text="`Searching for the song...`",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                video_url = await search_youtube(url_or_query)
-                await searching_message.delete()
-                if not video_url:
-                    await client.send_message(
-                        chat_id=message.chat.id,
-                        text="❌ No matching audios found"
-                    )
-                else:
-                    await handle_audio_request(client, message)
-
-async def search_youtube(query: str) -> Optional[str]:
-    """
-    Search YouTube for the first video result matching the query.
-    """
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'default_search': 'ytsearch1:',
-        'nooverwrites': True,
-        'cookiefile': YT_COOKIES_PATH,
-        'no_warnings': True,
-        'quiet': True,
-        'no_color': True,
-        'simulate': True,
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = await asyncio.get_event_loop().run_in_executor(executor, ydl.extract_info, query, False)
-            if 'entries' in info and info['entries']:
-                return info['entries'][0]['webpage_url']
-    except Exception as e:
-        print(f"YouTube search error: {e}")
-    
-    return None
+            await handle_audio_request(client, message, url_or_query)
