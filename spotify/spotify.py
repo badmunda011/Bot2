@@ -1,15 +1,21 @@
 import os
+import requests
 import logging
 import time
 import yt_dlp
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters
+from pyrogram.enums import ParseMode
 from pyrogram.types import Message
 from typing import Optional
 import asyncio
+import aiofiles
 from concurrent.futures import ThreadPoolExecutor
 from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+# Spotify API Config
+SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
+SPOTIFY_TRACK_API_URL = "https://api.spotify.com/v1/tracks/"
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Initialize Spotipy client
 spotify = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
 
-YT_COOKIES_PATH = "./cookies/cookies.txt"
+YT_COOKIES_PATH = "./cookies/ItsSmartToolBot.txt"
 
 # ThreadPoolExecutor for blocking I/O operations
 executor = ThreadPoolExecutor(max_workers=10)
@@ -39,6 +45,19 @@ async def format_duration(ms: int) -> str:
     minutes = (seconds % 3600) // 60
     seconds = seconds % 60
     return f"{minutes}m {seconds}s"
+
+async def download_image(url: str, output_path: str) -> Optional[str]:
+    """Download image from a URL."""
+    try:
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            async with aiofiles.open(output_path, 'wb') as file:
+                for chunk in response.iter_content(1024):
+                    await file.write(chunk)
+            return output_path
+    except Exception as e:
+        logger.error(f"Failed to download image: {e}")
+    return None
 
 async def get_audio_opts(output_filename: str) -> dict:
     """Return yt-dlp options for audio download."""
@@ -71,21 +90,69 @@ async def download_audio(url: str, output_filename: str) -> Optional[str]:
         logger.error(f"Error downloading audio: {e}")
         return None
 
+async def get_spotify_access_token() -> Optional[str]:
+    """Fetch Spotify Access Token."""
+    try:
+        response = requests.post(SPOTIFY_TOKEN_URL, data={
+            "grant_type": "client_credentials",
+            "client_id": SPOTIFY_CLIENT_ID,
+            "client_secret": SPOTIFY_CLIENT_SECRET
+        })
+        response.raise_for_status()
+        return response.json().get("access_token")
+    except Exception as e:
+        logger.error(f"Failed to fetch Spotify token: {e}")
+        return None
+
+async def get_spotify_track(track_id: str) -> Optional[dict]:
+    """Fetch Spotify Track Details."""
+    token = await get_spotify_access_token()
+    if not token:
+        return None
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(SPOTIFY_TRACK_API_URL + track_id, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Failed to fetch track details: {e}")
+        return None
+
 async def handle_spotify_request(client, message, url):
     if not url:
-        await message.reply_text("**Please provide a track Spotify URL ❌**", parse_mode=enums.ParseMode.MARKDOWN)
+        await client.send_message(
+            chat_id=message.chat.id,
+            text="**Please provide a track Spotify URL ❌**",
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
 
-    status_message = await message.reply_text("`Processing your request...`", parse_mode=enums.ParseMode.MARKDOWN)
+    status_message = await client.send_message(
+        chat_id=message.chat.id,
+        text="`Processing your request...`",
+        parse_mode=ParseMode.MARKDOWN
+    )
 
     try:
         # Extract track ID from the Spotify URL
         track_id = url.split("/")[-1]
-        track = spotify.track(track_id)
+        track = await get_spotify_track(track_id)
+
+        if not track:
+            await status_message.edit("**❌ Could not fetch Spotify track details.**")
+            return
 
         title = track['name']
         artists = ", ".join([artist['name'] for artist in track['artists']])
         duration = await format_duration(track['duration_ms'])
+
+        # Fetch cover image
+        cover_url = track['album']['images'][0]['url'] if track['album']['images'] else None
+        cover_path = None
+        if cover_url:
+            os.makedirs("temp_media", exist_ok=True)
+            cover_path = f"temp_media/{await sanitize_filename(title)}.jpg"
+            await download_image(cover_url, cover_path)
 
         # Use YouTube search to find the track
         search_query = f"{title} {artists}"
@@ -106,7 +173,7 @@ async def handle_spotify_request(client, message, url):
         if 'entries' in info and info['entries']:
             yt_url = info['entries'][0]['webpage_url']
         else:
-            await status_message.edit("❌ Could not find the track on YouTube.")
+            await status_message.edit("**Please Provide A Valid Spotify URL ❌**")
             return
 
         # Download audio using yt-dlp
@@ -116,20 +183,18 @@ async def handle_spotify_request(client, message, url):
         audio_path = await download_audio(yt_url, output_filename)
 
         if not audio_path:
-            await status_message.edit("❌ Download failed: File not created.")
+            await status_message.edit("**❌ An Error Occurred**")
             return
 
-        await status_message.delete()
-
-        downloading_message = await message.reply_text("`Found ☑️ Downloading...`", parse_mode=enums.ParseMode.MARKDOWN)
+        await status_message.edit("**Found ☑️ Downloading...**")
 
         if message.from_user:
             user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
-            user_info = f"Downloaded By: [{user_full_name}](tg://user?id={message.from_user.id})"
+            user_info = f"[{user_full_name}](tg://user?id={message.from_user.id})"
         else:
             group_name = message.chat.title or "this group"
             group_url = f"https://t.me/{message.chat.username}" if message.chat.username else "this group"
-            user_info = f"Downloaded By: [{group_name}]({group_url})"
+            user_info = f"[{group_name}]({group_url})"
 
         audio_caption = (
             f"🎵 **Title:** `{title}`\n"
@@ -137,7 +202,7 @@ async def handle_spotify_request(client, message, url):
             f"👤 **Artist:** `{artists}`\n"
             f"⏱️ **Duration:** `{duration}`\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"{user_info}"
+            f"**Downloaded By** {user_info}"
         )
 
         last_update_time = [0]
@@ -149,15 +214,19 @@ async def handle_spotify_request(client, message, url):
             caption=audio_caption,
             title=title,
             performer=artists,
-            parse_mode=enums.ParseMode.MARKDOWN,
+            parse_mode=ParseMode.MARKDOWN,
+            thumb=cover_path if cover_path else None,
             progress=progress_bar,
-            progress_args=(downloading_message, start_time, last_update_time)
+            progress_args=(status_message, start_time, last_update_time)
         )
 
         os.remove(audio_path)
-        await downloading_message.delete()
+        if cover_path:
+            os.remove(cover_path)
+
+        await status_message.delete()  # Delete the progress message after completion
     except Exception as e:
-        await status_message.edit(f"❌ An error occurred: {str(e)}")
+        await status_message.edit(f"**❌ An error occurred: {e}**")
 
 async def progress_bar(current, total, status_message, start_time, last_update_time):
     """Display a progress bar for uploads."""
@@ -195,5 +264,4 @@ def setup_spotify_handler(app: Client):
 
     # Attach the downloader to the client for access in handlers
     app.downloader = yt_dlp.YoutubeDL()
-
-# To use the handler, call setup_spotify_handler(app) in your main script.
+    
