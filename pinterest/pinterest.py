@@ -329,11 +329,11 @@ class PinterestDownloader:
         
         return None
 
-async def handle_pinterest_request(client, message, url):
+async def handle_pinterest_request(client, message: Message, url: str):
     async with client.download_semaphore:
         try:
             # Send initial processing message
-            status_msg = await message.reply_text("`Processing your request...`", parse_mode=ParseMode.MARKDOWN)
+            status_msg = await message.reply_text("**Processing your request...**", parse_mode=ParseMode.MARKDOWN)
             
             # Ensure the downloader is an instance of PinterestDownloader
             if not hasattr(client, 'downloader') or not isinstance(client.downloader, PinterestDownloader):
@@ -341,13 +341,13 @@ async def handle_pinterest_request(client, message, url):
             
             pin_id = await client.downloader.extract_pin_id(url)
             if not pin_id:
-                await status_msg.edit_text('Invalid Pinterest URL. Please send a valid pin URL.')
+                await status_msg.edit_text('**❌ Invalid Pinterest ID**')
                 return
             
             media_data = await client.downloader.get_pin_data(pin_id)
             
             if not media_data:
-                await status_msg.edit_text('Could not find media in this Pinterest link.')
+                await status_msg.edit_text('**❌ Unable to Fetch Video Details**')
                 return
             
             file_path = Config.TEMP_DIR / f"temp_{message.chat.id}_{message.id}_{pin_id}"
@@ -358,11 +358,11 @@ async def handle_pinterest_request(client, message, url):
             )
             
             if not success:
-                await status_msg.edit_text('Failed to download media. Please try again later.')
+                await status_msg.edit_text('**❌ Failed to download media**')
                 return
             
             await status_msg.delete()
-            downloading_message = await message.reply_text("`Found ☑️ Downloading...`", parse_mode=ParseMode.MARKDOWN)
+            downloading_message = await message.reply_text("**Found ☑️ Downloading...**", parse_mode=ParseMode.MARKDOWN)
             
             # Get file size for progress tracking
             file_size = os.path.getsize(file_path)
@@ -387,7 +387,7 @@ async def handle_pinterest_request(client, message, url):
                     
             except Exception as e:
                 logger.error(f"Error sending media: {e}")
-                await status_msg.edit_text('Failed to send media. Please try again later.')
+                await status_msg.edit_text('**❌ Failed to send media**')
             
             await asyncio.get_event_loop().run_in_executor(
                 client.downloader.file_pool,
@@ -397,10 +397,10 @@ async def handle_pinterest_request(client, message, url):
             
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
-            await message.reply_text('An error occurred while processing your request.')
+            await message.reply_text('**❌ An error occurred**')
 
 def setup_pinterest_handler(app: Client):
-    @app.on_message(filters.regex(r"^[/.](pin|pnt)(\s+\S+)?$") & (filters.private | filters.group))
+    @app.on_message(filters.regex(r"^[/.](pin|pnt|pint)(\s+\S+)?$") & (filters.private | filters.group))
     async def pin_command(client, message):
         command_parts = message.text.split(maxsplit=1)
         url = command_parts[1] if len(command_parts) > 1 else None
