@@ -140,5 +140,5 @@ async def start_menu_callback(client: Client, callback_query: CallbackQuery):
         disable_web_page_preview=True,
     )
 
-print("Bot is running...")
+print("Bot Successfully Started! 💥")
 app.run()
