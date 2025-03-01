@@ -4,13 +4,15 @@ import asyncio
 from pyrogram.enums import ParseMode
 import os
 from config import API_ID, API_HASH, BOT_TOKEN
-
+from utils.logging_setup import LOGGER  # Import the logger setup
 # Import the handlers
 from youtube.youtube import setup_downloader_handler
 from pinterest.pinterest import setup_pinterest_handler
 from facebook.facebook import setup_dl_handlers
 from spotify.spotify import setup_spotify_handler
-
+from adminpanel.restart.restart import setup_restart_handler
+from adminpanel.admin.admin import setup_admin_handler
+from adminpanel.logs.logs import setup_logs_handler
 # Initialize the bot client
 app = Client(
     "app_session",
@@ -24,7 +26,9 @@ setup_downloader_handler(app)
 setup_pinterest_handler(app)
 setup_dl_handlers(app)
 setup_spotify_handler(app)
-
+setup_restart_handler(app)
+setup_admin_handler(app)
+setup_logs_handler(app)
 @app.on_message(filters.command(["start"], prefixes=["/", "."]) & filters.private)
 async def send_start_message(client, message):
     chat_id = message.chat.id
