@@ -244,7 +244,8 @@ def download_audio_sync(url: str) -> tuple:
             'title': title,
             'views': views,
             'duration': duration_str,
-            'file_size': format_size(file_size)
+            'file_size': format_size(file_size),
+            'thumbnail_path': prepare_thumbnail_sync(info['thumbnail'], output_path) if 'thumbnail' in info else None
         }, None
 
     except yt_dlp.utils.DownloadError as e:
@@ -300,7 +301,7 @@ async def search_youtube(query: str) -> Optional[str]:
 
     return None
 
-async def handle_download_request(client, message, query):
+async def handle_download_request(client: Client, message: Message, query: str):
     search_message = await client.send_message(
         chat_id=message.chat.id,
         text="**⚡️Searching for the video...**",
@@ -385,7 +386,7 @@ async def handle_download_request(client, message, query):
             parse_mode=ParseMode.MARKDOWN
         )
 
-async def handle_audio_request(client, message, query):
+async def handle_audio_request(client: Client, message: Message, query: str):
     status_message = await client.send_message(
         chat_id=message.chat.id,
         text="**⚡️Searching for the song...**",
@@ -422,6 +423,7 @@ async def handle_audio_request(client, message, query):
         views = result['views']
         duration = result['duration']
         file_size = result['file_size']
+        thumbnail_path = result.get('thumbnail_path')
 
         if message.from_user:
             user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
@@ -451,12 +453,19 @@ async def handle_audio_request(client, message, query):
             title=title,
             performer="Smart Tool ⚙️",
             parse_mode=ParseMode.MARKDOWN,
+            thumb=thumbnail_path,
             progress=progress_bar,
             progress_args=(status_message, start_time, last_update_time)
         )
 
-        os.remove(audio_path)
+        # Cleanup
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            os.remove(thumbnail_path)
+
         await status_message.delete()
+
     except Exception as e:
         await status_message.edit_text(
             text=f"**An Error Occurred During Download❌**"
