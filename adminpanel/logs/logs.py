@@ -1,60 +1,60 @@
-import logging
-import io
+import os
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaDocument
 from pyrogram.enums import ParseMode
-from config import ADMIN_IDS  # Make sure to import your ADMIN_IDS
-
-# Create a StringIO buffer to store logs
-log_buffer = io.StringIO()
+from config import ADMIN_IDS  # Import ADMIN_IDS
 
 def setup_logs_handler(app: Client):
-    """Sets up logging to capture console output."""
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # Create a StreamHandler to capture logs in a buffer
-    stream_handler = logging.StreamHandler(log_buffer)
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    stream_handler.setFormatter(formatter)
-
-    # Remove old handlers to prevent duplicate logs
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-
-    logger.addHandler(stream_handler)
-
-    logging.info(" Bot Successfully Started! 💥")
-
-    @app.on_message(filters.command("logs") & (filters.private | filters.group))
+    """Sets up the logs handler to send logs from botlog.txt only."""
+    
+    @app.on_message(filters.command(["dump", "logs"], prefixes=["/", "."]) & (filters.private | filters.group))
     async def logs_command(client, message):
-        """Sends a loading message first, then edits it with logs, only for admins."""
+        """Sends logs from botlog.txt to admins only."""
 
         # Check if the user is an admin
         if message.from_user.id not in ADMIN_IDS:
-            await message.reply_text("❌ You do not have permission to use this command.")
+            await client.send_message(
+                chat_id=message.chat.id, 
+                text="**❌ You do not have permission to use this command.**", 
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
 
         # Send loading message
-        loading_msg = await message.reply_text("🚀 **Fetching Logs Database🔥**", parse_mode=ParseMode.MARKDOWN)
-
-        # Read the current logs from the buffer
-        log_buffer.seek(0)  # Move to the start of the buffer
-        logs = log_buffer.read().strip()  # Read logs
-
-        if not logs:
-            logs = "No logs available yet."
-
-        # Format logs as normal text (no bold, no monospace)
-        logs_formatted = f"📜 Latest Logs:\n\n{logs}"
-
-        # Create an inline "Close" button
-        keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("❌ Close", callback_data="close_logs")]]
+        loading_msg = await client.send_message(
+            chat_id=message.chat.id, 
+            text="🚀 **Fetching Logs Database🔥**", 
+            parse_mode=ParseMode.MARKDOWN
         )
 
-        # Edit the loading message with logs
-        await loading_msg.edit_text(logs_formatted, parse_mode=ParseMode.DISABLED, reply_markup=keyboard)
+        logs = "No logs available yet."
+
+        # Read the logs from botlog.txt if it exists
+        if os.path.exists("botlog.txt"):
+            with open("botlog.txt", "r", encoding="utf-8") as f:
+                logs = f.read().strip()
+
+        # If logs are too long, send as a text file
+        if len(logs) > 4000:
+            log_file_path = "botlog.txt"
+            await client.send_document(
+                chat_id=message.chat.id,
+                document=log_file_path,
+                caption="📜 **Here are the latest logs:**",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            await loading_msg.delete()
+        else:
+            # Format logs as plain text
+            logs_formatted = f"📜 Latest Logs:\n\n{logs}"
+
+            # Create an inline "Close" button
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("❌ Close", callback_data="close_logs")]]
+            )
+
+            # Edit the loading message with logs
+            await loading_msg.edit_text(logs_formatted, parse_mode=ParseMode.DISABLED, reply_markup=keyboard)
 
     @app.on_callback_query(filters.regex("close_logs"))
     async def close_logs(client: Client, query: CallbackQuery):
