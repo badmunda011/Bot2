@@ -22,4 +22,4 @@ logging.getLogger("pytgcalls").setLevel(logging.ERROR)
 logging.getLogger("apscheduler").setLevel(logging.ERROR)
 
 LOGGER = logging.getLogger(__name__)
-LOGGER.info("Logging setup complete!")
+LOGGER.info("Bot Successfully Started! 💥")
