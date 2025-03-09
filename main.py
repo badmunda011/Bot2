@@ -4,7 +4,7 @@ import asyncio
 from pyrogram.enums import ParseMode
 import os
 from config import API_ID, API_HASH, BOT_TOKEN
-from utils.logging_setup import LOGGER  # Import the logger setup
+from utils import LOGGER
 # Import the handlers
 from youtube.youtube import setup_downloader_handler
 from pinterest.pinterest import setup_pinterest_handler
