@@ -12,8 +12,6 @@ client = pymongo.MongoClient(MONGO_URL)
 db = client["user_activity_db"]
 user_activity_collection = db["user_activity"]
 
-# Initialize the bot
-app = Client('my_bot')
 
 # Function to update user activity in the MongoDB database
 def update_user_activity(user_id, is_group=False):
@@ -45,66 +43,81 @@ def is_admin(user_id):
 
 async def broadcast_handler(client: Client, message: Message):
     if not is_admin(message.from_user.id):
-        await message.reply_text("You are not authorized to use this command.")
+        await message.reply_text("🚫 **You are not authorized to use this command.**")
         return
 
-    await message.reply_text("Please send the message you want to broadcast.")
-    broadcast_message_handler = None
+    if message.reply_to_message:
+        broadcast_message = message.reply_to_message
+        await process_broadcast(client, broadcast_message)
+    else:
+        await message.reply_text("📢 **Please send the message you want to broadcast.**")
+        broadcast_message_handler = None
 
-    async def broadcast_message(client: Client, broadcast_msg: Message):
-        nonlocal broadcast_message_handler
-        global total_users, blocked_users, broadcast_start_time
-        total_users, blocked_users = 0, 0
-        broadcast_start_time = datetime.now()
+        async def broadcast_message_callback(client: Client, broadcast_msg: Message):
+            nonlocal broadcast_message_handler
+            if broadcast_msg.chat.id == message.chat.id and is_admin(broadcast_msg.from_user.id):
+                await process_broadcast(client, broadcast_msg)
+                client.remove_handler(*broadcast_message_handler)
 
-        # Notify admin that the broadcast is being processed
-        processing_message = await broadcast_msg.reply_text('**⏳Processing Broadcast⚡️**')
-
-        # Get the message to broadcast
-        broadcast_message_id = broadcast_msg.id
-
-        # Get all user ids
-        user_ids = [user["user_id"] for user in user_activity_collection.find()]
-
-        # Broadcast the message
-        for user_id in user_ids:
-            try:
-                await client.copy_message(
-                    chat_id=user_id,
-                    from_chat_id=broadcast_msg.chat.id,
-                    message_id=broadcast_message_id,
-                    reply_markup=InlineKeyboardMarkup(
-                        [[InlineKeyboardButton("Update Channel", url="https://t.me/Modvip_rm")]]
-                    )
-                )
-                total_users += 1
-            except Exception as e:
-                if "blocked" in str(e):
-                    blocked_users += 1
-                continue
-
-        # Calculate time taken for the broadcast
-        broadcast_end_time = datetime.now()
-        time_taken = (broadcast_end_time - broadcast_start_time).total_seconds()
-
-        # Delete the processing message
-        await processing_message.delete()
-
-        # Send a completion message to the admin
-        await broadcast_msg.reply_text(
-            f"Successfully Broadcast Complete to {total_users} users in {time_taken:.2f} seconds ✅\n\n"
-            f"To Users: {total_users}\n"
-            f"Blocked: {blocked_users}",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("Update Channel", url="https://t.me/Modvip_rm")]]
-            )
+        broadcast_message_handler = client.add_handler(
+            MessageHandler(broadcast_message_callback, filters.group & filters.chat(message.chat.id)),
+            group=1
         )
-        # Remove the handler to avoid multiple broadcasts
-        client.remove_handler(*broadcast_message_handler)
 
-    broadcast_message_handler = client.add_handler(MessageHandler(broadcast_message, filters.private))
+async def process_broadcast(client: Client, broadcast_msg: Message):
+    global total_users, blocked_users, broadcast_start_time
+    total_users, blocked_users = 0, 0
+    broadcast_start_time = datetime.now()
+
+    # Notify admin that the broadcast is being processed
+    processing_message = await broadcast_msg.reply_text('**⏳Processing Broadcast⚡️**')
+
+    # Get the message to broadcast
+    broadcast_message_id = broadcast_msg.id
+
+    # Get all user ids and group ids
+    user_ids = [user["user_id"] for user in user_activity_collection.find()]
+    group_ids = [group["user_id"] for group in user_activity_collection.find({"is_group": True})]
+
+    # Broadcast the message to users and groups
+    for user_id in user_ids + group_ids:
+        try:
+            await client.copy_message(
+                chat_id=user_id,
+                from_chat_id=broadcast_msg.chat.id,
+                message_id=broadcast_message_id,
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("Update Channel", url="https://t.me/Modvip_rm")]]
+                )
+            )
+            total_users += 1
+        except Exception as e:
+            if "blocked" in str(e):
+                blocked_users += 1
+            continue
+
+    # Calculate time taken for the broadcast
+    broadcast_end_time = datetime.now()
+    time_taken = (broadcast_end_time - broadcast_start_time).total_seconds()
+
+    # Delete the processing message
+    await processing_message.delete()
+
+    # Send a completion message to the admin
+    await broadcast_msg.reply_text(
+        f"**✅ Successfully Broadcast Complete to {total_users} users in {time_taken:.2f} seconds**\n\n"
+        f"**👥 To Users: {total_users}\n"
+        f"🚫 Blocked: {blocked_users}**",
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("Update Channel", url="https://t.me/Modvip_rm")]]
+        )
+    )
 
 async def stats_handler(client: Client, message: Message):
+    if not is_admin(message.from_user.id):
+        await message.reply_text("🚫 **You are not authorized to use this command.**")
+        return
+
     now = datetime.utcnow()
     daily_users = user_activity_collection.count_documents({"last_activity": {"$gt": now - timedelta(days=1)}})
     weekly_users = user_activity_collection.count_documents({"last_activity": {"$gt": now - timedelta(weeks=1)}})
@@ -114,7 +127,7 @@ async def stats_handler(client: Client, message: Message):
     total_groups = user_activity_collection.count_documents({"is_group": True})
 
     stats_text = (
-        "📊 Bot Usage Report\n"
+        "**📊 Bot Usage Report\n"
         "━━━━━━━━━━━\n"
         "🚀 User Engagements:\n"
         f"- Daily Starts: {daily_users}\n"
@@ -123,7 +136,7 @@ async def stats_handler(client: Client, message: Message):
         f"- Annual Starts: {yearly_users}\n\n"
         "📈 Total Metrics:\n"
         f"- Total Groups: {total_groups}\n"
-        f"- Users Registered: {total_users}\n"
+        f"- Users Registered: {total_users}**\n"
     )
 
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔔 Bot Updates", url="https://t.me/Modvip_rm")]])
@@ -152,15 +165,15 @@ def setup_admin_handler(app: Client):
     Set up command handlers for the Pyrogram bot.
     This includes specific commands like /broadcast and /stats, as well as general activity tracking.
     """
-    # Add the /broadcast command handler for broadcasting messages
+    # Add the /broadcast, .broadcast, /send and .send command handlers for broadcasting messages
     app.add_handler(
-        MessageHandler(broadcast_handler, filters.command("broadcast") & filters.private),
+        MessageHandler(broadcast_handler, (filters.command("broadcast") | filters.command("broadcast", prefixes=[".", "/"]) | filters.command("send") | filters.command("send", prefixes=[".", "/"])) & (filters.private | filters.group)),
         group=1,  # High priority to ensure it executes first
     )
     
-    # Add the /stats command handler for bot statistics (works in both private and group)
+    # Add the /stats, .stats, /report, .report, /status and .status command handlers for bot statistics (works in both private and group)
     app.add_handler(
-        MessageHandler(stats_handler, filters.command("stats")),
+        MessageHandler(stats_handler, (filters.command("stats") | filters.command("stats", prefixes=[".", "/"]) | filters.command("report") | filters.command("report", prefixes=[".", "/"]) | filters.command("status") | filters.command("status", prefixes=[".", "/"])) & (filters.private | filters.group)),
         group=1,  # High priority to ensure it executes first
     )
     
