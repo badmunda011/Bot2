@@ -1,18 +1,17 @@
+import shutil
+import os
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import asyncio
-import os
-import sys
 from config import ADMIN_IDS
 
 def setup_restart_handler(app: Client):
     @app.on_message(filters.command(["restart", "reboot", "reload"], prefixes=["/", "."]) & (filters.private | filters.group))
-    async def restart_bot(client, message):
+    async def restart(_, message):
         if message.from_user.id not in ADMIN_IDS:
-            await client.send_message(
-                chat_id=message.chat.id,
-                text="<b>❌ You are not authorized to use this command.</b>",
+            await message.reply_text(
+                "<b>❌ You are not authorized to use this command.</b>",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(
                     [
@@ -29,22 +28,67 @@ def setup_restart_handler(app: Client):
             )
             return
 
-        msg = await client.send_message(
-            chat_id=message.chat.id,
-            text="<b>🔄 Restarting the bot...</b>",
+        response = await message.reply_text(
+            "<b>Restarting Bot...</b>",
             parse_mode=ParseMode.HTML
         )
-        await asyncio.sleep(2)
+        
+        # Active chats handling logic here if applicable
+        # Example:
+        # served_chats = await get_active_chats()
+        # for x in served_chats:
+        #     try:
+        #         await app.send_message(
+        #             x,
+        #             "The bot is restarting for updating purposes. Sorry for the inconvenience."
+        #         )
+        #         await remove_active_chat(x)
+        #     except Exception:
+        #         pass
 
-        # Close the message to indicate the bot is restarting
-        await msg.edit_text("<b> Bot Successfully Started! 💥</b>", parse_mode=ParseMode.HTML)
+        # Directories to be removed
+        directories = ["downloads", "temp", "temp_media"]
+        for directory in directories:
+            try:
+                shutil.rmtree(directory)
+            except FileNotFoundError:
+                pass
 
-        # Terminate old screen session
-        os.system("screen -X -S ItsSmartTool quit")
-        # Clear the screen
-        os.system("clear")
-        # Start new screen session with bot
-        os.system("screen -dmS ItsSmartTool python3 main.py")
+        # Delete the botlogs.txt file if it exists
+        if os.path.exists("botlog.txt"):
+            os.remove("botlog.txt")
 
-        # Restart the bot process
-        os.execl(sys.executable, sys.executable, *sys.argv)
+        await asyncio.sleep(6)
+
+        await response.edit(
+            "<b>Bot Successfully Started! 💥</b>",
+            parse_mode=ParseMode.HTML
+        )
+        os.system(f"kill -9 {os.getpid()} && bash start.sh")
+
+    @app.on_message(filters.command(["stop", "kill", "off"], prefixes=["/", "."]) & (filters.private | filters.group))
+    async def stop(_, message):
+        if message.from_user.id not in ADMIN_IDS:
+            await message.reply_text(
+                "<b>❌ You are not authorized to use this command.</b>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton("👨🏼‍💻 Developer", url='https://t.me/abirxdhackz'),
+                            InlineKeyboardButton("🤖 Other Bots", url="https://t.me/Modvip_rm")
+                        ],
+                        [
+                            InlineKeyboardButton("🔗 Source Code", url="https://github.com/abirxdhack/RestartModule"),
+                            InlineKeyboardButton("⚙️ Update Channel", url="https://t.me/Modvip_rm")
+                        ]
+                    ]
+                )
+            )
+            return
+
+        await message.reply_text(
+            "<b>Bot Off Successfully</b>",
+            parse_mode=ParseMode.HTML
+        )
+        os.system("pkill -f main.py")
