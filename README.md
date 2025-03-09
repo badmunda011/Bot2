@@ -23,17 +23,6 @@
 - **Instagram Reel Downloader**: Download Reels From Instagram
 - **TikTok Video Downloader**: Download TikTok Video From TikTok  
 
-## Requirements
-
-Before you begin, ensure you have met the following requirements:
-
-- 🐍 Python 3.9 or higher.
-- 📦 `pyrogram` , `yt-dlp` , `spotipy` , `requests` , `pillow` , `asyncio` , `aiofiles` , `aiohttp`  library.
-- 🤖 A Telegram bot token (you can get one from [@BotFather](https://t.me/BotFather) on Telegram).
-- 🔑 API ID and Hash: You can get these by creating an application on [my.telegram.org](https://my.telegram.org).
-- 🎸 SPOTIFY_CLIENT_ID from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-- 🎸 SPOTIFY_CLIENT_SECRET from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-- 🔑 MONGO_URL from [MONGODB DATABASE](http://mongodb.com/)  
 ## Installation
 
 To install `pyrogram` , `yt-dlp` , `spotipy` , `requests` , `pillow` , `asyncio` , `aiofiles` , `aiohttp`  run the following command:
