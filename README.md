@@ -20,6 +20,8 @@
 - **YouTube Video Downloader**: Download videos from YouTube.
 - **Pinterest Video Downloader**: Download videos from Pinterest.
 - **Spotify Track Downloader**: Download tracks from Spotify.
+- **Instagram Reel Downloader**: Download Reels From Instagram
+- **TikTok Video Downloader**: Download TikTok Video From TikTok  
 
 ## Requirements
 
@@ -31,7 +33,7 @@ Before you begin, ensure you have met the following requirements:
 - 🔑 API ID and Hash: You can get these by creating an application on [my.telegram.org](https://my.telegram.org).
 - 🎸 SPOTIFY_CLIENT_ID from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 - 🎸 SPOTIFY_CLIENT_SECRET from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-
+- 🔑 MONGO_URL from [MONGODB DATABASE](http://mongodb.com/)  
 ## Installation
 
 To install `pyrogram` , `yt-dlp` , `spotipy` , `requests` , `pillow` , `asyncio` , `aiofiles` , `aiohttp`  run the following command:
@@ -79,13 +81,23 @@ This setup should help manage YouTube content access efficiently without encount
    - **`BOT_TOKEN`**: The token you obtained from [@BotFather](https://t.me/BotFather).
    - **`SPOTIFY_CLIENT_ID`**: SPOTIFY_CLIENT_ID from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
    - **`SPOTIFY_CLIENT_SECRET`**: SPOTIFY_CLIENT_SECRET from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+   - **`MONGO_URL`**: MONGO_URL from [MONGODB DATABASE](http://mongodb.com/)  
 
 ## Deploy the Bot
 
 ```sh
 git clone https://github.com/abirxdhack/SmartDlBot
 cd SmartDlBot
-python main.py
+python3 main.py
+```
+
+## Deploy the Bot With Screen
+
+```sh
+git clone https://github.com/abirxdhack/SmartDlBot
+cd SmartDlBot
+screen -S SmartDlBot
+python3 main.py
 ```
 
 ## Usage 🛠️
@@ -101,6 +113,11 @@ Download videos and tracks from popular platforms using these commands:
 ➢ **`/pin [Video URL]`** - Download a Pinterest video.
    - Example: **/pin https://pin.it/6GoDMRwmE** **`Downloads the specified Pinterest video`**
 
+➢ **`/in [Video URL]`** - Download a Instagram video.
+   - Example: **/in https://www.instagram.com/reel/C_vOYErJBm7/?igsh=YzljYTk1ODg3Zg== ** **`Downloads the specified Instagram video`**
+     
+➢ **`/tt [Video URL]`** - Download a TikTok Video.
+   - Example: **/tt https://vt.tiktok.com/ZSMV19Kfu/** **`Downloads the specified TikTok Video**`     
 
 ➢ **`/sp [Track URL]`** - Download a Spotify track.
    - Example: **/sp https://open.spotify.com/track/7ouBSPZKQpm7zQz2leJXta** **`Downloads the specified Spotify track**`
@@ -120,6 +137,12 @@ Download videos and tracks from popular platforms using these commands:
 ➢ **`.pin [Video URL]`** - Download a Pinterest video.
    - Example: **.pin https://pin.it/6GoDMRwmE** **`Downloads the specified Pinterest video`**
    - Note: 18+ Instagram Reels cannot be downloaded.
+     
+➢ **`.in [Video URL]`** - Download a Instagram video.
+   - Example: **/in https://www.instagram.com/reel/C_vOYErJBm7/?igsh=YzljYTk1ODg3Zg== ** **`Downloads the specified Instagram video`**
+     
+➢ **`.tt [Video URL]`** - Download a TikTok Video.
+   - Example: **/tt https://vt.tiktok.com/ZSMV19Kfu/** **`Downloads the specified TikTok Video**`     
 
 ➢ **`.sp [Track URL]`** - Download a Spotify track.
    - Example: **.sp https://open.spotify.com/track/7ouBSPZKQpm7zQz2leJXta** **`Downloads the specified Spotify track`**
@@ -143,3 +166,7 @@ For inquiries or feedback, please feel free to reach out via Telegram.
 
 - Name: Abir Arafat Chawdhury
 - Telegram: [@abirxdhackz](https://t.me/abirxdhackz)
+
+## Update Author
+- Name ᔰ ᦲ ᔰ 「🇲🇲」
+- Telegram: [@nkka404](https://t.me/nkka404)
