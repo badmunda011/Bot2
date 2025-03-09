@@ -10,6 +10,8 @@ from youtube.youtube import setup_downloader_handler
 from pinterest.pinterest import setup_pinterest_handler
 from facebook.facebook import setup_dl_handlers
 from spotify.spotify import setup_spotify_handler
+from tiktok.tiktok import setup_tt_handler
+from instagram.instagram import setup_in_handlers
 from adminpanel.restart.restart import setup_restart_handler
 from adminpanel.admin.admin import setup_admin_handler
 from adminpanel.logs.logs import setup_logs_handler
@@ -29,6 +31,9 @@ setup_spotify_handler(app)
 setup_restart_handler(app)
 setup_admin_handler(app)
 setup_logs_handler(app)
+setup_in_handlers(app)
+setup_tt_handler(app)
+
 @app.on_message(filters.command(["start"], prefixes=["/", "."]) & filters.private)
 async def send_start_message(client, message):
     chat_id = message.chat.id
@@ -74,6 +79,10 @@ async def help_menu_callback(client: Client, callback_query: CallbackQuery):
         "   - Note: Private Facebook videos cannot be downloaded.\n\n"
         "➢ <b>/pin [Video URL]</b> - Download a Pinterest video.\n"
         "   - Example: <code>/pin https://pin.it/6GoDMRwmE</code> (Downloads the specified Pinterest video)\n\n"
+        "➢ <b>/tt [Video URL]</b> - Download a TikTok video.\n"
+        "   - Example: <code>/tt https://vt.tiktok.com/ZSMV19Kfu/</code> (Downloads the specified TikTok video)\n\n"
+        "➢ <b>/in [Video URL]</b> - Download Instagram Reels.\n"
+        "   - Example: <code>/in https://www.instagram.com/reel/C_vOYErJBm7/?igsh=YzljYTk1ODg3Zg==</code> (Downloads the specified Instagram reel)\n"
         "   - Note: 18+ Instagram Reels cannot be downloaded.\n\n"
         "➢ <b>/sp [Track URL]</b> - Download a Spotify track.\n"
         "   - Example: <code>/sp https://open.spotify.com/track/7ouBSPZKQpm7zQz2leJXta</code> (Downloads the specified Spotify track)\n\n"
@@ -83,7 +92,7 @@ async def help_menu_callback(client: Client, callback_query: CallbackQuery):
         "   - Example: <code>/song https://youtu.be/In8bfGnXavw</code> (Converts and downloads the video as MP3)\n\n"
         ">NOTE:\n"
         "1️⃣ Provide a valid public URL for each platform to download successfully.\n\n"
-        ">🔔 For Bot Update News: <a href='https://t.me/ModVipRM'>Join Now</a>"
+        ">🔔 For Bot Update News: <a href='https://t.me/Modvip_rm'>Join Now</a>"
     )
 
     await callback_query.message.edit_text(
