@@ -7,3 +7,4 @@ asyncio
 aiofiles
 aiohttp
 youtube-search-python
+moviepy
