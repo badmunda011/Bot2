@@ -14,7 +14,7 @@ import time
 import requests
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 
 YT_COOKIES_PATH = "./cookies/ItsSmartToolBot.txt"
 
@@ -33,7 +33,7 @@ class Config:
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
         'Connection': 'keep-alive',
-        'Referer': 'https://www.youtube.com/',
+        'Referer': 'https://www.youtube.com',
     }
 
 Config.TEMP_DIR.mkdir(exist_ok=True)
@@ -93,7 +93,7 @@ def get_video_duration_moviepy(video_path: str) -> float:
         return duration
     except Exception as e:
         print(f"Error getting video duration: {e}")
-        return 0:00
+        return 0.0
 
 async def progress_bar(current, total, status_message, start_time, last_update_time):
     """
