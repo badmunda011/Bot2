@@ -14,6 +14,7 @@ import time
 import requests
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
+from moviepy.editor import VideoFileClip
 
 YT_COOKIES_PATH = "./cookies/ItsSmartToolBot.txt"
 
@@ -32,7 +33,7 @@ class Config:
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
         'Connection': 'keep-alive',
-        'Referer': 'https://www.pinterest.com/',
+        'Referer': 'https://www.youtube.com/',
     }
 
 Config.TEMP_DIR.mkdir(exist_ok=True)
@@ -78,6 +79,21 @@ def format_duration(seconds: int) -> str:
         return f"{minutes}m {seconds}s"
     else:
         return f"{seconds}s"
+
+def get_video_duration_moviepy(video_path: str) -> float:
+    """
+    Get video duration using MoviePy.
+    Returns duration in seconds.
+    """
+    try:
+        # Load the video file
+        clip = VideoFileClip(video_path)
+        duration = clip.duration  # Get duration in seconds
+        clip.close()  # Close the video file
+        return duration
+    except Exception as e:
+        print(f"Error getting video duration: {e}")
+        return 0:00
 
 async def progress_bar(current, total, status_message, start_time, last_update_time):
     """
@@ -178,6 +194,10 @@ def download_video_sync(url: str) -> tuple:
             os.remove(output_path)
             return None, "Video file exceeds Telegram's 2GB limit."
 
+        # Get duration using MoviePy
+        duration = get_video_duration_moviepy(output_path)
+        duration_str = format_duration(int(duration))
+        
         # Download and prepare thumbnail
         thumbnail_path = None
         if thumbnail_url:
@@ -368,6 +388,9 @@ async def handle_download_request(client: Client, message: Message, query: str):
             parse_mode=ParseMode.MARKDOWN,
             supports_streaming=True,
             thumb=thumbnail_path,
+            height=720,
+            width=1280,
+            duration=int(get_video_duration_moviepy(video_path)),
             progress=progress_bar,
             progress_args=(search_message, start_time, last_update_time)
         )
@@ -451,7 +474,7 @@ async def handle_audio_request(client: Client, message: Message, query: str):
             audio=audio_path,
             caption=audio_caption,
             title=title,
-            performer="Smart Tool ⚙️",
+            performer="404 Smart Tool ⚙️",
             parse_mode=ParseMode.MARKDOWN,
             thumb=thumbnail_path,
             progress=progress_bar,
