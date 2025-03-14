@@ -9,7 +9,7 @@ import aiofiles
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-
+from moviepy import VideoFileClip
 
 # Configure logging
 logging.basicConfig(
@@ -26,7 +26,7 @@ class Config:
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
         'Connection': 'keep-alive',
-        'Referer': 'https://www.pinterest.com/',
+        'Referer': 'https://www.facebook.com/',
     }
 
 Config.TEMP_DIR.mkdir(exist_ok=True)
@@ -48,6 +48,7 @@ class FacebookDownloader:
             'nooverwrites': True,
             'noprogress': True,
             'concurrent_fragment_downloads': 10,  # Increase concurrency
+            'merge_output_format': 'mp4',  # Ensure proper merging of video and audio
         }
 
         try:
@@ -63,16 +64,36 @@ class FacebookDownloader:
             info_dict = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info_dict)
             if os.path.exists(filename):
+                duration = self.get_video_duration_moviepy(filename)
                 return {
                     'title': info_dict.get('title', 'Unknown Title'),
                     'filename': filename,
                     'resolution': f"{info_dict.get('height', 'Unknown')}p",
                     'views': info_dict.get('view_count', 'Unknown'),
-                    'duration': info_dict.get('duration', 'Unknown'),
+                    'duration': duration,
                     'webpage_url': info_dict.get('webpage_url', url)
                 }
             else:
                 return None
+
+    def get_video_duration_moviepy(self, video_path: str) -> float:
+        """
+        Get video duration using MoviePy.
+        Returns duration in seconds.
+        """
+        try:
+            with VideoFileClip(video_path) as clip:
+                return clip.duration
+        except Exception as e:
+            print(f"Error getting video duration: {e}")
+            return 0.0
+
+async def fix_metadata(video_path: str) -> str:
+    new_path = video_path.replace(".mp4", "_fixed.mp4")
+    command = f'ffmpeg -i "{video_path}" -c copy "{new_path}" -y'
+    process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    await process.communicate()
+    return new_path if os.path.exists(new_path) else video_path
 
 def setup_dl_handlers(app: Client):
     fb_downloader = FacebookDownloader(Config.TEMP_DIR)
@@ -91,7 +112,7 @@ def setup_dl_handlers(app: Client):
         url = command_parts[1]
         downloading_message = await client.send_message(
             chat_id=message.chat.id,
-            text="`Searching The Video`",
+            text="**Searching The Video**",
             parse_mode=ParseMode.MARKDOWN
         )
         
@@ -128,22 +149,27 @@ def setup_dl_handlers(app: Client):
                     f"━━━━━━━━━━━━━━━━━━━━━\n"
                     f"**Downloaded By**: {user_info}"
                 )
+
+                fixed_filename = await fix_metadata(filename)
                 
-                async with aiofiles.open(filename, 'rb') as video_file:
+                async with aiofiles.open(fixed_filename, 'rb') as video_file:
                     start_time = time.time()
                     last_update_time = [start_time]
                     await client.send_video(
                         chat_id=message.chat.id,
-                        video=filename,
+                        video=fixed_filename,
                         supports_streaming=True,
                         caption=caption,
+                        height=720,
+                        width=1280,
+                        duration=int(duration),
                         parse_mode=ParseMode.MARKDOWN,
                         progress=progress_bar,
                         progress_args=(downloading_message, start_time, last_update_time)
                     )
                 
                 await downloading_message.delete()
-                os.remove(filename)
+                os.remove(fixed_filename)
             else:
                 await downloading_message.edit_text("Download Error ❌")
         except Exception as e:
