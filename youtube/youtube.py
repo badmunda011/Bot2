@@ -15,6 +15,7 @@ import requests
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 from moviepy import VideoFileClip
+from config import COMMAND_PREFIX
 
 YT_COOKIES_PATH = "./cookies/ItsSmartToolBot.txt"
 
@@ -324,7 +325,7 @@ async def search_youtube(query: str) -> Optional[str]:
 async def handle_download_request(client: Client, message: Message, query: str):
     search_message = await client.send_message(
         chat_id=message.chat.id,
-        text="**⚡️Searching for the video...**",
+        text="**Searching The Video**",
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -332,7 +333,7 @@ async def handle_download_request(client: Client, message: Message, query: str):
         video_url = await search_youtube(query)
         if not video_url:
             await search_message.edit_text(
-                text="**❌ No matching videos found**"
+                text="**❌No Video Matched To Your Search**"
             )
             return
     else:
@@ -343,7 +344,7 @@ async def handle_download_request(client: Client, message: Message, query: str):
         result, error = await loop.run_in_executor(executor, download_video_sync, video_url)
         if error:
             await search_message.edit(
-                text=f"**An Error Occurred During Download❌**",
+                text=f"**Incomplete or invalid YouTube URL**",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
@@ -405,14 +406,14 @@ async def handle_download_request(client: Client, message: Message, query: str):
 
     except Exception as e:
         await search_message.edit(
-            text=f"**An Error Occurred During Download❌**",
+            text=f"**YouTube Downloader API Dead **",
             parse_mode=ParseMode.MARKDOWN
         )
 
 async def handle_audio_request(client: Client, message: Message, query: str):
     status_message = await client.send_message(
         chat_id=message.chat.id,
-        text="**⚡️Searching for the song...**",
+        text="**Searching For The Song**",
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -420,7 +421,7 @@ async def handle_audio_request(client: Client, message: Message, query: str):
         video_url = await search_youtube(query)
         if not video_url:
             await status_message.edit_text(
-                text="**❌ No matching audios found**"
+                text="**❌ No Song Matched To Your Search**"
             )
             return
     else:
@@ -431,7 +432,7 @@ async def handle_audio_request(client: Client, message: Message, query: str):
         result, error = await loop.run_in_executor(executor, download_audio_sync, video_url)
         if error:
             await status_message.edit(
-                text=f"**An Error Occurred During Download❌**",
+                text=f"**YouTube Downloader API Dead **",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
@@ -474,7 +475,7 @@ async def handle_audio_request(client: Client, message: Message, query: str):
             audio=audio_path,
             caption=audio_caption,
             title=title,
-            performer="404 Smart Tool ⚙️",
+            performer="Smart Tools 💥",
             parse_mode=ParseMode.MARKDOWN,
             thumb=thumbnail_path,
             progress=progress_bar,
@@ -491,13 +492,16 @@ async def handle_audio_request(client: Client, message: Message, query: str):
 
     except Exception as e:
         await status_message.edit_text(
-            text=f"**An Error Occurred During Download❌**"
+            text=f"**YouTube Downloader API Dead **"
         )
         if os.path.exists(audio_path):
             os.remove(audio_path)
 
 def setup_downloader_handler(app: Client):
-    @app.on_message(filters.regex(r"^[/.](yt|video)(\s+.+)?$"))
+# Create a regex pattern from the COMMAND_PREFIX list
+    command_prefix_regex = f"[{''.join(map(re.escape, COMMAND_PREFIX))}]"
+
+    @app.on_message(filters.regex(rf"^{command_prefix_regex}(yt|video)(\s+.+)?$"))
     async def video_command(client, message):
         command_parts = message.text.split(maxsplit=1)
         if len(command_parts) == 1 or not command_parts[1]:
@@ -510,7 +514,7 @@ def setup_downloader_handler(app: Client):
             url_or_query = command_parts[1]
             await handle_download_request(client, message, url_or_query)
 
-    @app.on_message(filters.regex(r"^[/.]song(\s+.+)?$"))
+    @app.on_message(filters.regex(rf"^{command_prefix_regex}song(\s+.+)?$"))
     async def song_command(client, message):
         command_parts = message.text.split(maxsplit=1)
         if len(command_parts) == 1 or not command_parts[1]:
