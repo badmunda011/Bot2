@@ -1,15 +1,16 @@
 import os
 import logging
 import time
+import re
 from pathlib import Path
 from typing import Optional
-import yt_dlp
+import aiohttp
 import asyncio
 import aiofiles
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-from moviepy import VideoFileClip
+from config import COMMAND_PREFIX  # Import COMMAND_PREFIX from config
 
 # Configure logging
 logging.basicConfig(
@@ -21,84 +22,56 @@ logger = logging.getLogger(__name__)
 # Configuration
 class Config:
     TEMP_DIR = Path("temp")
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive',
-        'Referer': 'https://www.facebook.com/',
-    }
 
 Config.TEMP_DIR.mkdir(exist_ok=True)
 
 class FacebookDownloader:
     def __init__(self, temp_dir: Path):
         self.temp_dir = temp_dir
-        yt_dlp.utils.std_headers['User-Agent'] = Config.HEADERS['User-Agent']
 
-    async def download_video(self, url: str) -> Optional[dict]:
+    async def download_video(self, url: str, downloading_message: Message) -> Optional[dict]:
         self.temp_dir.mkdir(exist_ok=True)
-        ydl_opts = {
-            'format': 'bestvideo+bestaudio/best',
-            'outtmpl': str(self.temp_dir / '%(title)s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-            'no_color': True,
-            'simulate': False,
-            'nooverwrites': True,
-            'noprogress': True,
-            'concurrent_fragment_downloads': 10,  # Increase concurrency
-            'merge_output_format': 'mp4',  # Ensure proper merging of video and audio
-        }
-
+        api_url = f"https://tooly.chative.io/facebook/video?url={url}"
+        
         try:
-            loop = asyncio.get_event_loop()
-            video_info = await loop.run_in_executor(None, self._download_video, ydl_opts, url)
-            return video_info
+            connector = aiohttp.TCPConnector(limit_per_host=10)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(api_url) as response:
+                    logger.info(f"API request to {api_url} returned status {response.status}")
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info(f"API response: {data}")
+                        if data["success"]:
+                            await downloading_message.edit_text("**Found ☑️ Downloading...**", parse_mode=ParseMode.MARKDOWN)
+                            video_url = data["videos"]["hd"]["url"]
+                            title = data["title"]
+                            filename = self.temp_dir / f"{title}.mp4"
+                            await self._download_file(session, video_url, filename)
+                            return {
+                                'title': title,
+                                'filename': str(filename),
+                                'webpage_url': url
+                            }
+                    return None
         except Exception as e:
             logger.error(f"Facebook download error: {e}")
             return None
 
-    def _download_video(self, ydl_opts, url):
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info_dict)
-            if os.path.exists(filename):
-                duration = self.get_video_duration_moviepy(filename)
-                return {
-                    'title': info_dict.get('title', 'Unknown Title'),
-                    'filename': filename,
-                    'resolution': f"{info_dict.get('height', 'Unknown')}p",
-                    'views': info_dict.get('view_count', 'Unknown'),
-                    'duration': duration,
-                    'webpage_url': info_dict.get('webpage_url', url)
-                }
-            else:
-                return None
-
-    def get_video_duration_moviepy(self, video_path: str) -> float:
-        """
-        Get video duration using MoviePy.
-        Returns duration in seconds.
-        """
-        try:
-            with VideoFileClip(video_path) as clip:
-                return clip.duration
-        except Exception as e:
-            print(f"Error getting video duration: {e}")
-            return 0.0
-
-async def fix_metadata(video_path: str) -> str:
-    new_path = video_path.replace(".mp4", "_fixed.mp4")
-    command = f'ffmpeg -i "{video_path}" -c copy "{new_path}" -y'
-    process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    await process.communicate()
-    return new_path if os.path.exists(new_path) else video_path
+    async def _download_file(self, session, url, dest):
+        async with session.get(url) as response:
+            if response.status == 200:
+                logger.info(f"Downloading video from {url} to {dest}")
+                f = await aiofiles.open(dest, mode='wb')
+                await f.write(await response.read())
+                await f.close()
 
 def setup_dl_handlers(app: Client):
     fb_downloader = FacebookDownloader(Config.TEMP_DIR)
 
-    @app.on_message(filters.regex(r"^[/.]fb(\s+https?://\S+)?$") & (filters.private | filters.group))
+    # Create a regex pattern from the COMMAND_PREFIX list
+    command_prefix_regex = f"[{''.join(map(re.escape, COMMAND_PREFIX))}]"
+
+    @app.on_message(filters.regex(rf"^{command_prefix_regex}fb(\s+https?://\S+)?$") & (filters.private | filters.group))
     async def fb_handler(client: Client, message: Message):
         command_parts = message.text.split(maxsplit=1)
         if len(command_parts) < 2:
@@ -117,15 +90,10 @@ def setup_dl_handlers(app: Client):
         )
         
         try:
-            video_info = await fb_downloader.download_video(url)
+            video_info = await fb_downloader.download_video(url, downloading_message)
             if video_info:
-                await downloading_message.edit_text("**Found ☑️ Downloading...**", parse_mode=ParseMode.MARKDOWN)
-                
                 title = video_info['title']
                 filename = video_info['filename']
-                resolution = video_info['resolution']
-                views = video_info['views']
-                duration = video_info['duration']
                 webpage_url = video_info['webpage_url']
                 
                 if message.from_user:
@@ -136,45 +104,35 @@ def setup_dl_handlers(app: Client):
                     group_url = f"https://t.me/{message.chat.username}" if message.chat.username else "this group"
                     user_info = f"[{group_name}]({group_url})"
 
-                # Convert duration to minutes and seconds
-                duration_minutes = int(duration // 60)
-                duration_seconds = int(duration % 60)
-                
                 caption = (
                     f"🎵 **Title**: **{title}**\n"
                     f"━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"👁️‍🗨️ **Views**: **{views} views**\n"
                     f"🔗 **Url**: [Watch On Facebook]({webpage_url})\n"
-                    f"⏱️ **Duration**: **{duration_minutes}:{duration_seconds:02d}**\n"
                     f"━━━━━━━━━━━━━━━━━━━━━\n"
                     f"**Downloaded By**: {user_info}"
                 )
 
-                fixed_filename = await fix_metadata(filename)
-                
-                async with aiofiles.open(fixed_filename, 'rb') as video_file:
+                async with aiofiles.open(filename, 'rb') as video_file:
                     start_time = time.time()
                     last_update_time = [start_time]
                     await client.send_video(
                         chat_id=message.chat.id,
-                        video=fixed_filename,
+                        video=filename,
                         supports_streaming=True,
                         caption=caption,
-                        height=720,
-                        width=1280,
-                        duration=int(duration),
                         parse_mode=ParseMode.MARKDOWN,
                         progress=progress_bar,
                         progress_args=(downloading_message, start_time, last_update_time)
                     )
                 
                 await downloading_message.delete()
-                os.remove(fixed_filename)
+                os.remove(filename)
             else:
-                await downloading_message.edit_text("Download Error ❌")
+                logger.info("Invalid Video URL or Video is Private")
+                await downloading_message.edit_text("**Invalid Video URL Or Video Private**")
         except Exception as e:
             logger.error(f"Error downloading Facebook video: {e}")
-            await downloading_message.edit_text("An error occurred❌")
+            await downloading_message.edit_text("**Facebook Downloader API Dead**")
 
 async def progress_bar(current, total, status_message, start_time, last_update_time):
     """
@@ -202,4 +160,4 @@ async def progress_bar(current, total, status_message, start_time, last_update_t
     try:
         await status_message.edit(text)
     except Exception as e:
-        print(f"Error updating progress: {e}")
+        logger.error(f"Error updating progress: {e}")
