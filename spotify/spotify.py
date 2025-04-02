@@ -1,18 +1,20 @@
 import os
-import requests
 import logging
 import time
-import yt_dlp
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-from pyrogram import Client, filters
-from pyrogram.enums import ParseMode
-from pyrogram.types import Message
-from typing import Optional
+import requests
+import aiohttp  # Import aiohttp module
+import re  # Import the re module
 import asyncio
 import aiofiles
 from concurrent.futures import ThreadPoolExecutor
-from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+from pyrogram import Client, filters
+from pyrogram.enums import ParseMode
+from pyrogram.types import Message
+from spotipy import Spotify
+from spotipy.oauth2 import SpotifyClientCredentials
+from typing import Optional
+from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, COMMAND_PREFIX
+
 # Spotify API Config
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_TRACK_API_URL = "https://api.spotify.com/v1/tracks/"
@@ -25,16 +27,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize Spotipy client
-spotify = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
-
-YT_COOKIES_PATH = "./cookies/ItsSmartToolBot.txt"
+spotify = Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
 
 # ThreadPoolExecutor for blocking I/O operations
 executor = ThreadPoolExecutor(max_workers=10)
 
 async def sanitize_filename(title: str) -> str:
     """Sanitize file name by removing invalid characters."""
-    import re
     title = re.sub(r'[<>:"/\\|?*]', '', title)
     title = title.replace(' ', '_')
     return f"{title[:50]}_{int(time.time())}"
@@ -58,37 +57,6 @@ async def download_image(url: str, output_path: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Failed to download image: {e}")
     return None
-
-async def get_audio_opts(output_filename: str) -> dict:
-    """Return yt-dlp options for audio download."""
-    return {
-        'format': 'bestaudio/best',
-        'outtmpl': f'{output_filename}.%(ext)s',
-        'cookiefile': YT_COOKIES_PATH,
-        'quiet': True,
-        'noprogress': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
-    }
-
-async def download_audio(url: str, output_filename: str) -> Optional[str]:
-    """Download audio using yt-dlp."""
-    opts = await get_audio_opts(output_filename)
-    loop = asyncio.get_event_loop()
-    try:
-        await loop.run_in_executor(executor, lambda: yt_dlp.YoutubeDL(opts).download([url]))
-        output_path = f"{output_filename}.mp3"
-        if os.path.exists(output_path):
-            return output_path
-        return None
-    except Exception as e:
-        logger.error(f"Error downloading audio: {e}")
-        return None
 
 async def get_spotify_access_token() -> Optional[str]:
     """Fetch Spotify Access Token."""
@@ -129,7 +97,7 @@ async def handle_spotify_request(client, message, url):
 
     status_message = await client.send_message(
         chat_id=message.chat.id,
-        text="`Processing your request...`",
+        text="**Searching The Music**",
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -154,37 +122,32 @@ async def handle_spotify_request(client, message, url):
             cover_path = f"temp_media/{await sanitize_filename(title)}.jpg"
             await download_image(cover_url, cover_path)
 
-        # Use YouTube search to find the track
-        search_query = f"{title} {artists}"
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'default_search': 'ytsearch1:',
-            'quiet': True,
-            'cookiefile': YT_COOKIES_PATH,
-            'no_warnings': True,
-            'nocheckcertificate': True,
-            'noplaylist': True,
-            'simulate': True
-        }
+        # Use the provided API to get the download link
+        api_url = f"https://tele-social.vercel.app/down?url={url}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data["status"]:
+                        media_url = data["data"]["link"]
+                    else:
+                        await status_message.edit("**Please Provide A Valid Spotify URL ❌**")
+                        return
+                else:
+                    await status_message.edit("**Failed to reach the download API ❌**")
+                    return
 
-        loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(executor, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(search_query, download=False))
-
-        if 'entries' in info and info['entries']:
-            yt_url = info['entries'][0]['webpage_url']
-        else:
-            await status_message.edit("**Please Provide A Valid Spotify URL ❌**")
-            return
-
-        # Download audio using yt-dlp
+        # Download audio using the provided media URL
         safe_title = await sanitize_filename(title)
-        output_filename = f"temp_media/{safe_title}"
-        os.makedirs("temp_media", exist_ok=True)
-        audio_path = await download_audio(yt_url, output_filename)
-
-        if not audio_path:
-            await status_message.edit("**❌ An Error Occurred**")
-            return
+        output_filename = f"temp_media/{safe_title}.mp3"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(media_url) as response:
+                if response.status == 200:
+                    async with aiofiles.open(output_filename, 'wb') as file:
+                        await file.write(await response.read())
+                else:
+                    await status_message.edit("**❌ An Error Occurred**")
+                    return
 
         await status_message.edit("**Found ☑️ Downloading...**")
 
@@ -210,7 +173,7 @@ async def handle_spotify_request(client, message, url):
 
         await client.send_audio(
             chat_id=message.chat.id,
-            audio=audio_path,
+            audio=output_filename,
             caption=audio_caption,
             title=title,
             performer=artists,
@@ -220,7 +183,7 @@ async def handle_spotify_request(client, message, url):
             progress_args=(status_message, start_time, last_update_time)
         )
 
-        os.remove(audio_path)
+        os.remove(output_filename)
         if cover_path:
             os.remove(cover_path)
 
@@ -255,13 +218,12 @@ async def progress_bar(current, total, status_message, start_time, last_update_t
         logger.error(f"Error updating progress: {e}")
 
 def setup_spotify_handler(app: Client):
-    @app.on_message(filters.regex(r"^[/.]sp(\s+\S+)?$") & (filters.private | filters.group))
+    # Create a regex pattern from the COMMAND_PREFIX list
+    command_prefix_regex = f"[{''.join(map(re.escape, COMMAND_PREFIX))}]"
+    
+    @app.on_message(filters.regex(rf"^{command_prefix_regex}sp(\s+\S+)?$") & (filters.private | filters.group))
     async def spotify_command(client, message):
         # Check if the message contains a Spotify URL
         command_parts = message.text.split(maxsplit=1)
         url = command_parts[1] if len(command_parts) > 1 else None
         await handle_spotify_request(client, message, url)
-
-    # Attach the downloader to the client for access in handlers
-    app.downloader = yt_dlp.YoutubeDL()
-    
