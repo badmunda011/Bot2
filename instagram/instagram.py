@@ -1,14 +1,16 @@
 import os
+import re
 import logging
 import time
 from pathlib import Path
 from typing import Optional
-import yt_dlp
+import aiohttp
 import asyncio
 import aiofiles
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
+from config import COMMAND_PREFIX
 
 # Configure logging
 logging.basicConfig(
@@ -33,42 +35,41 @@ Config.TEMP_DIR.mkdir(exist_ok=True)
 class InstagramDownloader:
     def __init__(self, temp_dir: Path):
         self.temp_dir = temp_dir
-        yt_dlp.utils.std_headers['User-Agent'] = Config.HEADERS['User-Agent']
 
-    async def download_reel(self, url: str) -> Optional[dict]:
+    async def download_reel(self, url: str, downloading_message: Message) -> Optional[dict]:
         self.temp_dir.mkdir(exist_ok=True)
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': str(self.temp_dir / '%(title)s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-            'no_color': True,
-            'simulate': False,
-            'nooverwrites': True,
-            'noprogress': True,
-            'concurrent_fragment_downloads': 10,
-        }
-
+        api_url = f"https://tele-social.vercel.app/down?url={url}"
+        
         try:
-            loop = asyncio.get_event_loop()
-            reel_info = await loop.run_in_executor(None, self._download_reel, ydl_opts, url)
-            return reel_info
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url) as response:
+                    logger.info(f"API request to {api_url} returned status {response.status}")
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info(f"API response: {data}")
+                        if data["status"]:
+                            await downloading_message.edit_text("**Found ☑️ Downloading...**", parse_mode=ParseMode.MARKDOWN)
+                            video_url = data["data"][0]["url"]
+                            title = data["data"][0].get("title", "Instagram Reel")
+                            filename = self.temp_dir / f"{title}.mp4"
+                            await self._download_file(session, video_url, filename)
+                            return {
+                                'title': title,
+                                'filename': str(filename),
+                                'webpage_url': url
+                            }
+                    return None
         except Exception as e:
             logger.error(f"Instagram Reels download error: {e}")
             return None
 
-    def _download_reel(self, ydl_opts, url):
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info_dict)
-            if os.path.exists(filename):
-                return {
-                    'title': info_dict.get('title', 'Unknown Title'),
-                    'filename': filename,
-                    'webpage_url': info_dict.get('webpage_url', url)
-                }
-            else:
-                return None
+    async def _download_file(self, session, url, dest):
+        async with session.get(url) as response:
+            if response.status == 200:
+                logger.info(f"Downloading video from {url} to {dest}")
+                f = await aiofiles.open(dest, mode='wb')
+                await f.write(await response.read())
+                await f.close()
 
 async def progress_bar(current, total, status_message, start_time, last_update_time):
     """
@@ -101,7 +102,10 @@ async def progress_bar(current, total, status_message, start_time, last_update_t
 def setup_in_handlers(app: Client):
     ig_downloader = InstagramDownloader(Config.TEMP_DIR)
 
-    @app.on_message(filters.regex(r"^[/.]in(\s+https?://\S+)?$") & (filters.private | filters.group))
+    # Create a regex pattern from the COMMAND_PREFIX list
+    command_prefix_regex = f"[{''.join(map(re.escape, COMMAND_PREFIX))}]"
+
+    @app.on_message(filters.regex(rf"^{command_prefix_regex}in(\s+https?://\S+)?$") & (filters.private | filters.group))
     async def ig_handler(client: Client, message: Message):
         command_parts = message.text.split(maxsplit=1)
         if len(command_parts) < 2:
@@ -120,10 +124,8 @@ def setup_in_handlers(app: Client):
         )
         
         try:
-            reel_info = await ig_downloader.download_reel(url)
+            reel_info = await ig_downloader.download_reel(url, downloading_message)
             if reel_info:
-                await downloading_message.edit_text("**Found ☑️ Downloading...**", parse_mode=ParseMode.MARKDOWN)
-                
                 title = reel_info['title']
                 filename = reel_info['filename']
                 webpage_url = reel_info['webpage_url']
@@ -160,7 +162,7 @@ def setup_in_handlers(app: Client):
                 await downloading_message.delete()
                 os.remove(filename)
             else:
-                await downloading_message.edit_text("Download Error ❌")
+                await downloading_message.edit_text("**Unable To Extract Url**")
         except Exception as e:
             logger.error(f"Error downloading Instagram Reel: {e}")
-            await downloading_message.edit_text("An error occurred❌")
+            await downloading_message.edit_text("**Instagram Downloader API Dead**")
