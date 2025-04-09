@@ -17,3 +17,4 @@ else:
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 MONGO_URL = os.getenv("MONGO_URL")
+COMMAND_PREFIX = ["!", "/"]  # Example of common command prefixes
